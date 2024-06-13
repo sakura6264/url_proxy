@@ -1,0 +1,32 @@
+[package]
+name = "url_proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eframe = { version = "*", default-features = false, features = [
+    "glow",
+    "accesskit",
+] }
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+sled = "*"
+image = { version = "*", default-features = false, features = ["png"] }
+lazy_static = "*"
+log4rs = { version = "*", default-features = false, features = [
+    "rolling_file_appender",
+    "delete_roller",
+    "compound_policy",
+    "size_trigger",
+] }
+log = "*"
+
+
+[build-dependencies]
+embed-resource = "*"
+cc = "*"
+
+[profile.release]
+strip = true
+lto = true
+panic = "abort"
