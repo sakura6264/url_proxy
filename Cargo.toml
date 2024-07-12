@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 eframe = { version = "*", default-features = false, features = [
-    "glow",
+    "wgpu",
     "accesskit",
 ] }
 serde = { version = "*", features = ["derive"] }

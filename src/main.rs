@@ -17,6 +17,8 @@ lazy_static::lazy_static! {
 }
 
 fn main() {
+    // set environment variable DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1=1 to avoid crash on AMD
+    std::env::set_var("DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1", "1");
     // parse command line arguments
     let args = std::env::args().collect::<Vec<String>>();
     let url;
