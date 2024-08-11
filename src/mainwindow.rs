@@ -88,7 +88,7 @@ impl MainWindow {
 
 impl eframe::App for MainWindow {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let copyshortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::C);
+        let copyshortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::S);
         let exitshortcut_0 = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Q);
         let exitshortcut_1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::Escape);
         let open_shortcuts = [
@@ -127,9 +127,9 @@ impl eframe::App for MainWindow {
                 if drag_resp.drag_started() {
                     ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
-                exit_cmd = exit_cmd || ui.button("\u{ea76}").clicked();
+                exit_cmd = exit_cmd || ui.button("\u{ea76}").on_hover_text("Ctrl + Q\r\nESC").clicked();
                 settings_cmd = ui.button("\u{eb52}").clicked();
-                copy_cmd = copy_cmd || ui.button("\u{ebcc}").clicked();
+                copy_cmd = copy_cmd || ui.button("\u{ebcc}").on_hover_text("Ctrl + S").clicked();
                 log_cmd = ui.button("\u{f4ed}").clicked();
                 ui.add(
                     egui::TextEdit::singleline(&mut self.url).desired_width(ui.available_width()),
@@ -183,7 +183,8 @@ impl eframe::App for MainWindow {
         if copy_cmd {
             ctx.output_mut(|w| {
                 w.copied_text = self.url.clone();
-            })
+            });
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         if exit_cmd {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
