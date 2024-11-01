@@ -148,7 +148,7 @@ impl eframe::App for MainWindow {
                                     let mut cur = ui.cursor();
                                     cur.set_width(CARD_WIDTH);
                                     cur.set_height(CARD_HEIGHT);
-                                    ui.allocate_ui_at_rect(cur, |ui| {
+                                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(cur), |ui| {
                                         ui.vertical(|ui| {
                                             if ui
                                                 .add(egui::ImageButton::new(

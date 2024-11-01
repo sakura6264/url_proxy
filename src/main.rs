@@ -18,7 +18,7 @@ lazy_static::lazy_static! {
 
 fn main() {
     // set environment variable DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1=1 to avoid crash on AMD
-    std::env::set_var("DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1", "1");
+    // std::env::set_var("DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1", "1");
     // parse command line arguments
     let args = std::env::args().collect::<Vec<String>>();
     let url;
@@ -73,8 +73,6 @@ fn main() {
             icon: Some(std::sync::Arc::new(icon_data)),
             ..Default::default()
         },
-        default_theme: eframe::Theme::Dark,
-        follow_system_theme: false,
         ..Default::default()
     };
     let settings_browsers = settings.browsers.clone();
@@ -135,7 +133,12 @@ fn main() {
                 };
                 browsers.push(bros);
             }
-            Box::new(mainwindow::MainWindow::new(url, browsers, *settings_cols))
+            cc.egui_ctx.set_theme(egui::Theme::Dark);
+            Ok(Box::new(mainwindow::MainWindow::new(
+                url,
+                browsers,
+                *settings_cols,
+            )))
         }),
     )
     .unwrap();
