@@ -48,7 +48,25 @@ fn main() {
     // use winit to read screen size
     // load settings
     let (sc_width, sc_height) = utils::get_screen_size();
-    let settings = settings::Settings::load();
+    // check if setting path a file, if not, create one
+    let settings_path = utils::settings_path();
+    let settings;
+    if settings_path.exists() {
+        if settings_path.is_file() {
+            settings = settings::Settings::load();
+        }
+        else {
+            log::error!("Settings {} is not a file.", utils::settings_path().display());
+            settings = settings::Settings::default();
+        }
+    }
+    else {
+        log::warn!("Settings {} does not exist.", utils::settings_path().display());
+        settings = settings::Settings::default();
+        if let Err(e) = settings.create() {
+            log::error!("Failed to create settings file:{e}");
+        }
+    }
     // calculate window size
     let inner_width = settings.cols as f32 * (mainwindow::CARD_WIDTH + 20.0);
     let inner_height = settings.rows as f32 * (mainwindow::CARD_HEIGHT + 15.0) + 40.0;
@@ -142,7 +160,4 @@ fn main() {
         }),
     )
     .unwrap();
-    if let Err(e) = settings.save() {
-        log::error!("Save settings failed:{e}");
-    }
 }
