@@ -127,7 +127,11 @@ impl eframe::App for MainWindow {
                 if drag_resp.drag_started() {
                     ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
-                exit_cmd = exit_cmd || ui.button("\u{ea76}").on_hover_text("Ctrl + Q\r\nESC").clicked();
+                exit_cmd = exit_cmd
+                    || ui
+                        .button("\u{ea76}")
+                        .on_hover_text("Ctrl + Q\r\nESC")
+                        .clicked();
                 settings_cmd = ui.button("\u{eb52}").clicked();
                 copy_cmd = copy_cmd || ui.button("\u{ebcc}").on_hover_text("Ctrl + S").clicked();
                 log_cmd = ui.button("\u{f4ed}").clicked();
@@ -148,30 +152,36 @@ impl eframe::App for MainWindow {
                                     let mut cur = ui.cursor();
                                     cur.set_width(CARD_WIDTH);
                                     cur.set_height(CARD_HEIGHT);
-                                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(cur), |ui| {
-                                        ui.vertical(|ui| {
-                                            if ui
-                                                .add(egui::ImageButton::new(
-                                                    egui::Image::from_texture(
-                                                        egui::load::SizedTexture::new(
-                                                            browser.icon,
-                                                            [browser.width, browser.height],
-                                                        ),
-                                                    )
-                                                    .fit_to_exact_size(egui::vec2(
-                                                        CARD_WIDTH, CARD_WIDTH,
-                                                    )),
-                                                ))
-                                                .clicked()
-                                            {
-                                                open_browser = Some(browser.into_exec());
-                                            }
-                                            ui.add_sized(
-                                                egui::vec2(CARD_WIDTH, CARD_HEIGHT - CARD_WIDTH),
-                                                egui::Label::new(&browser.name),
-                                            );
-                                        });
-                                    });
+                                    ui.allocate_new_ui(
+                                        egui::UiBuilder::new().max_rect(cur),
+                                        |ui| {
+                                            ui.vertical(|ui| {
+                                                if ui
+                                                    .add(egui::ImageButton::new(
+                                                        egui::Image::from_texture(
+                                                            egui::load::SizedTexture::new(
+                                                                browser.icon,
+                                                                [browser.width, browser.height],
+                                                            ),
+                                                        )
+                                                        .fit_to_exact_size(egui::vec2(
+                                                            CARD_WIDTH, CARD_WIDTH,
+                                                        )),
+                                                    ))
+                                                    .clicked()
+                                                {
+                                                    open_browser = Some(browser.into_exec());
+                                                }
+                                                ui.add_sized(
+                                                    egui::vec2(
+                                                        CARD_WIDTH,
+                                                        CARD_HEIGHT - CARD_WIDTH,
+                                                    ),
+                                                    egui::Label::new(&browser.name),
+                                                );
+                                            });
+                                        },
+                                    );
                                 } else {
                                     break;
                                 }

@@ -1,14 +1,26 @@
+use image::RgbaImage;
 use sled;
+use std::io::Cursor;
+use std::io::{Error, ErrorKind};
+use std::result::Result;
 
-const ONE_DAY: usize = 24 * 3600 * 1000;
-const REBUILD_EXPIRE: usize = 5 * 60 * 1000;
+// Time constants
+const ONE_DAY: usize = 24 * 3600 * 1000; // 24 hours in milliseconds
+const REBUILD_EXPIRE: usize = 5 * 60 * 1000; // 5 minutes in milliseconds
 const REBUILD_TRY_LIMIT: usize = 3;
 
+/// Represents an icon cache entry with timestamp
+struct CacheEntry {
+    image: Option<RgbaImage>,
+    timestamp: usize,
+}
+
+/// Manages icon caching to avoid repeated extraction from executables
 pub struct IconCacheManager {
-    db: Option<sled::Db>,
-    rebuild_try: usize,
-    rebuild_time: usize,
-    expire_time: usize,
+    db: Option<sled::Db>, // Database handle
+    rebuild_try: usize,   // Number of rebuild attempts
+    rebuild_time: usize,  // Last rebuild timestamp
+    expire_time: usize,   // Cache expiration time in milliseconds
 }
 
 impl IconCacheManager {
@@ -21,126 +33,180 @@ impl IconCacheManager {
             expire_time: expire_days * ONE_DAY,
         }
     }
-    pub fn get(&mut self, name: &str, path: &str) -> Option<image::RgbaImage> {
-        match self.db {
-            Some(ref db) => {
-                match db.get(name) {
-                    Ok(Some(data)) => {
-                        // the data is not raw picture data.
-                        // must parse first.
-                        match Self::extract_data(data.to_vec()) {
-                            Some((img, time)) => {
-                                let now = crate::utils::get_unix_msec();
-                                if time + self.expire_time < now {
-                                    // expired
-                                    // load from file and cache it.
-                                    let icon = crate::utils::extract_icon(path);
-                                    let to_insert = match Self::make_data(icon.clone(), now) {
-                                        Some(data) => data,
-                                        None => Self::make_data(None, now).unwrap(),
-                                    };
-                                    if let Err(e) = db.insert(name, to_insert) {
-                                        log::error!("Insert into DB failed:{e}");
-                                    }
-                                    return icon;
-                                }
-                                return img;
-                            }
-                            None => {
-                                // parse failed
-                                // load from file and cache it.
-                                let now = crate::utils::get_unix_msec();
-                                log::error!("Data from {name} has error");
-                                let icon = crate::utils::extract_icon(path);
-                                let to_insert = match Self::make_data(icon.clone(), now) {
-                                    Some(data) => data,
-                                    None => Self::make_data(None, now).unwrap(),
-                                };
-                                if let Err(e) = db.insert(name, to_insert) {
-                                    log::error!("Insert into DB failed:{e}");
-                                }
-                                return icon;
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        // no data
-                        // load from file and cache it.
+    /// Get an icon from cache or extract it from the executable
+    pub fn get(&mut self, name: &str, path: &str) -> Option<RgbaImage> {
+        // If database is available, try to get from cache
+        if let Some(ref db) = self.db {
+            match self.get_from_db(db, name, path) {
+                Ok(Some(image)) => return Some(image),
+                Ok(None) => {} // Continue to extract icon
+                Err(_) => {
+                    // DB error, try to rebuild and extract icon directly
+                    self.force_rebuild();
+                }
+            }
+        } else {
+            // No database available, try to rebuild
+            self.force_rebuild();
+        }
+
+        // Extract icon directly from file
+        crate::utils::extract_icon(path)
+    }
+
+    /// Try to get an icon from the database
+    fn get_from_db(
+        &self,
+        db: &sled::Db,
+        name: &str,
+        path: &str,
+    ) -> Result<Option<RgbaImage>, Error> {
+        match db.get(name) {
+            Ok(Some(data)) => {
+                // Parse the cached data
+                match Self::extract_data(data.to_vec()) {
+                    Some(entry) => {
                         let now = crate::utils::get_unix_msec();
-                        let icon = crate::utils::extract_icon(path);
-                        let to_insert = match Self::make_data(icon.clone(), now) {
-                            Some(data) => data,
-                            None => Self::make_data(None, now).unwrap(),
-                        };
-                        if let Err(e) = db.insert(name, to_insert) {
-                            log::error!("Insert into DB failed:{e}");
+
+                        // Check if cache entry is expired
+                        if entry.timestamp + self.expire_time < now {
+                            // Expired, extract and update cache
+                            self.update_cache(db, name, path, now);
+                            Ok(crate::utils::extract_icon(path))
+                        } else {
+                            // Not expired, return cached image
+                            Ok(entry.image)
                         }
-                        return icon;
                     }
-                    Err(e) => {
-                        // error
-                        // try to force rebuild
-                        // load from file for this time
-                        log::error!("DB is down: {e}");
-                        self.force_rebuild();
-                        let icon = crate::utils::extract_icon(path);
-                        return icon;
+                    None => {
+                        // Parse failed, extract and update cache
+                        log::error!("Data from {name} has parsing error");
+                        self.update_cache(db, name, path, crate::utils::get_unix_msec());
+                        Ok(crate::utils::extract_icon(path))
                     }
                 }
             }
-            None => {
-                // no db
-                // the db is down
-                // try rebuild and
-                // direct load from file
-                self.force_rebuild();
-                let icon = crate::utils::extract_icon(path);
-                return icon;
+            Ok(None) => {
+                // No data in cache, extract and update cache
+                self.update_cache(db, name, path, crate::utils::get_unix_msec());
+                Ok(crate::utils::extract_icon(path))
+            }
+            Err(e) => {
+                log::error!("Database error: {e}");
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Database error: {}", e),
+                ))
             }
         }
     }
-    pub fn force_rebuild(&mut self) {
-        if self.rebuild_try < REBUILD_TRY_LIMIT {
-            self.db = None;
-            return;
+
+    /// Update the cache with a new icon
+    fn update_cache(&self, db: &sled::Db, name: &str, path: &str, timestamp: usize) -> Option<()> {
+        let icon = crate::utils::extract_icon(path);
+        let data = Self::make_data(icon.clone(), timestamp)?;
+
+        if let Err(e) = db.insert(name, data) {
+            log::error!("Failed to insert into cache: {e}");
+            return None;
         }
-        let now = crate::utils::get_unix_msec();
-        if now - self.rebuild_time < REBUILD_EXPIRE {
-            self.db = None;
-            return;
-        }
-        self.rebuild_try = self.rebuild_try + 1;
-        self.rebuild_time = now;
-        self.db = None;
-        // force clear the db path
-        std::fs::remove_dir_all(crate::utils::cache_path()).ok();
-        self.db = sled::open(crate::utils::cache_path()).ok();
+
+        Some(())
     }
-    fn make_data(img: Option<image::RgbaImage>, timestamp: usize) -> Option<Vec<u8>> {
+    /// Attempt to rebuild the database if it's corrupted
+    pub fn force_rebuild(&mut self) {
+        // Reset database connection
+        self.db = None;
+
+        // Check if we've exceeded rebuild attempts
+        if self.rebuild_try >= REBUILD_TRY_LIMIT {
+            let now = crate::utils::get_unix_msec();
+
+            // Only try rebuilding if enough time has passed since last attempt
+            if now - self.rebuild_time >= REBUILD_EXPIRE {
+                log::info!("Attempting to rebuild cache database");
+                self.rebuild_try = self.rebuild_try + 1;
+                self.rebuild_time = now;
+
+                // Remove existing database files
+                if let Err(e) = std::fs::remove_dir_all(crate::utils::cache_path()) {
+                    log::warn!("Failed to remove cache directory: {e}");
+                }
+
+                // Try to reopen the database
+                self.db = match sled::open(crate::utils::cache_path()) {
+                    Ok(db) => {
+                        log::info!("Successfully rebuilt cache database");
+                        Some(db)
+                    }
+                    Err(e) => {
+                        log::error!("Failed to rebuild cache database: {e}");
+                        None
+                    }
+                };
+            }
+        } else {
+            self.rebuild_try += 1;
+        }
+    }
+    /// Serialize a cache entry to bytes
+    fn make_data(img: Option<RgbaImage>, timestamp: usize) -> Option<Vec<u8>> {
+        // Start with timestamp bytes
         let time_bytes = timestamp.to_le_bytes();
         let mut output = Vec::from(time_bytes);
+
+        // If we have an image, encode it as PNG and append
         if let Some(img) = img {
             let mut data = Vec::new();
-            let writer = std::io::Cursor::new(&mut data);
+            let writer = Cursor::new(&mut data);
             let encoder = image::codecs::png::PngEncoder::new(writer);
-            img.write_with_encoder(encoder).ok()?;
+
+            if let Err(e) = img.write_with_encoder(encoder) {
+                log::error!("Failed to encode image: {e}");
+                return None;
+            }
+
             output.append(&mut data);
         }
+
         Some(output)
     }
-    fn extract_data(data: Vec<u8>) -> Option<(Option<image::RgbaImage>, usize)> {
-        // timestamp is usize
-        if data.len() < std::mem::size_of::<usize>() {
+
+    /// Deserialize bytes to a cache entry
+    fn extract_data(data: Vec<u8>) -> Option<CacheEntry> {
+        let timestamp_size = std::mem::size_of::<usize>();
+
+        // Check if data is too small to contain timestamp
+        if data.len() < timestamp_size {
+            log::error!("Cache data too small to contain timestamp");
             return None;
-        } else if data.len() == std::mem::size_of::<usize>() {
-            let time_bytes = data.as_slice();
-            let timestamp = usize::from_le_bytes(time_bytes.try_into().ok()?);
-            return Some((None, timestamp));
-        } else {
-            let (time_bytes, img_bytes) = data.split_at(std::mem::size_of::<usize>());
-            let timestamp = usize::from_le_bytes(time_bytes.try_into().ok()?);
-            let img = image::load_from_memory(&img_bytes).ok()?;
-            Some((Some(img.to_rgba8()), timestamp))
+        }
+
+        // Extract timestamp
+        let (time_bytes, img_bytes) = data.split_at(timestamp_size);
+        let timestamp = usize::from_le_bytes(time_bytes.try_into().ok()?);
+
+        // If there's no image data, return entry with None image
+        if img_bytes.is_empty() {
+            return Some(CacheEntry {
+                image: None,
+                timestamp,
+            });
+        }
+
+        // Try to load image data
+        match image::load_from_memory(img_bytes) {
+            Ok(img) => Some(CacheEntry {
+                image: Some(img.to_rgba8()),
+                timestamp,
+            }),
+            Err(e) => {
+                log::error!("Failed to decode image from cache: {e}");
+                Some(CacheEntry {
+                    image: None,
+                    timestamp,
+                })
+            }
         }
     }
 }
