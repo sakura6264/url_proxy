@@ -1,37 +1,55 @@
 #include <windows.h>
+#include <stdlib.h>
 
 UINT32 ExtractIconImpl(LPCWSTR path, UINT8** output_buf, UINT64* width, UINT64* height, UINT64* bwidth) {
     HICON hicon = NULL;
-    UINT ExtractIconReturn = ExtractIconExW(path,0,&hicon,NULL,10);
-    if (hicon == NULL) {
+    // Request exactly one large icon into hicon
+    UINT extracted = ExtractIconExW(path, 0, &hicon, NULL, 1);
+    if (extracted == 0 || hicon == NULL) {
         return GetLastError();
     }
+
     ICONINFO icon_info;
-    // extract icon
     if (GetIconInfo(hicon, &icon_info) == 0) {
         DestroyIcon(hicon);
         return GetLastError();
     }
+
     BITMAP bmp;
-    // get bitmap info
     if (GetObject(icon_info.hbmColor, sizeof(bmp), &bmp) == 0) {
+        if (icon_info.hbmColor) DeleteObject(icon_info.hbmColor);
+        if (icon_info.hbmMask) DeleteObject(icon_info.hbmMask);
         DestroyIcon(hicon);
         return GetLastError();
     }
-    // allocate memory
-    *output_buf = (UINT8*)malloc(bmp.bmWidthBytes * bmp.bmHeight);
+
+    SIZE_T total = (SIZE_T)bmp.bmWidthBytes * (SIZE_T)bmp.bmHeight;
+    *output_buf = (UINT8*)malloc(total);
     if (*output_buf == NULL) {
+        if (icon_info.hbmColor) DeleteObject(icon_info.hbmColor);
+        if (icon_info.hbmMask) DeleteObject(icon_info.hbmMask);
         DestroyIcon(hicon);
         return GetLastError();
     }
-    // copy bitmap data
-    GetBitmapBits(icon_info.hbmColor, bmp.bmWidthBytes * bmp.bmHeight, *output_buf);
-    // set output values
-    *width = bmp.bmWidth;
-    *height = bmp.bmHeight;
-    *bwidth = bmp.bmWidthBytes;
-    // free resources
-    DeleteObject(icon_info.hbmColor);
+
+    // Copy raw bits
+    LONG copied = GetBitmapBits(icon_info.hbmColor, (LONG)total, *output_buf);
+    if (copied == 0) {
+        free(*output_buf);
+        *output_buf = NULL;
+        if (icon_info.hbmColor) DeleteObject(icon_info.hbmColor);
+        if (icon_info.hbmMask) DeleteObject(icon_info.hbmMask);
+        DestroyIcon(hicon);
+        return GetLastError();
+    }
+
+    *width = (UINT64)bmp.bmWidth;
+    *height = (UINT64)bmp.bmHeight;
+    *bwidth = (UINT64)bmp.bmWidthBytes;
+
+    if (icon_info.hbmColor) DeleteObject(icon_info.hbmColor);
+    if (icon_info.hbmMask) DeleteObject(icon_info.hbmMask);
+    DestroyIcon(hicon);
     return 0;
 }
 

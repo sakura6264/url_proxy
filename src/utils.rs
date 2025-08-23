@@ -49,12 +49,12 @@ pub fn get_unix_msec() -> usize {
 extern "C" {
     fn ExtractIconImpl(
         path: *const u16,
-        output_buf: *const *mut u8,
+        output_buf: *mut *mut u8,
         width: *mut u64,
         height: *mut u64,
         bwidth: *mut u64,
     ) -> u32;
-    fn FreeMemory(buf: *const u8);
+    fn FreeMemory(buf: *mut u8);
     fn OpenFile(path: *const u16) -> u32;
     fn GetScreenSize(width: *mut u64, height: *mut u64) -> u32;
 }

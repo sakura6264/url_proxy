@@ -115,38 +115,53 @@ impl IconCacheManager {
     }
     /// Attempt to rebuild the database if it's corrupted
     pub fn force_rebuild(&mut self) {
-        // Reset database connection
-        self.db = None;
-
-        // Check if we've exceeded rebuild attempts
-        if self.rebuild_try >= REBUILD_TRY_LIMIT {
-            let now = crate::utils::get_unix_msec();
-
-            // Only try rebuilding if enough time has passed since last attempt
-            if now - self.rebuild_time >= REBUILD_EXPIRE {
-                log::info!("Attempting to rebuild cache database");
-                self.rebuild_try = self.rebuild_try + 1;
-                self.rebuild_time = now;
-
-                // Remove existing database files
-                if let Err(e) = std::fs::remove_dir_all(crate::utils::cache_path()) {
-                    log::warn!("Failed to remove cache directory: {e}");
-                }
-
-                // Try to reopen the database
-                self.db = match sled::open(crate::utils::cache_path()) {
-                    Ok(db) => {
-                        log::info!("Successfully rebuilt cache database");
-                        Some(db)
-                    }
-                    Err(e) => {
-                        log::error!("Failed to rebuild cache database: {e}");
-                        None
-                    }
-                };
+        // First, try to reopen immediately without destructive actions
+        match sled::open(crate::utils::cache_path()) {
+            Ok(db) => {
+                self.db = Some(db);
+                self.rebuild_try = 0;
+                self.rebuild_time = crate::utils::get_unix_msec();
+                return;
             }
-        } else {
+            Err(e) => {
+                log::warn!("Failed to open cache database: {e}");
+                self.db = None;
+            }
+        }
+
+        let now = crate::utils::get_unix_msec();
+
+        // If we haven't hit the try limit, just back off and try later
+        if self.rebuild_try < REBUILD_TRY_LIMIT {
             self.rebuild_try += 1;
+            self.rebuild_time = now;
+            return;
+        }
+
+        // Rate-limit destructive purge attempts
+        if now - self.rebuild_time < REBUILD_EXPIRE {
+            return;
+        }
+
+        log::info!("Purging and rebuilding cache database");
+        self.rebuild_time = now;
+
+        if let Err(e) = std::fs::remove_dir_all(crate::utils::cache_path()) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                log::warn!("Failed to remove cache directory: {e}");
+            }
+        }
+
+        match sled::open(crate::utils::cache_path()) {
+            Ok(db) => {
+                log::info!("Successfully rebuilt cache database");
+                self.db = Some(db);
+                self.rebuild_try = 0;
+            }
+            Err(e) => {
+                log::error!("Failed to rebuild cache database: {e}");
+                self.db = None;
+            }
         }
     }
     /// Serialize a cache entry to bytes

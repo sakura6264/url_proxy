@@ -40,10 +40,10 @@ fn main() -> Result<(), Error> {
     // Create window options
     let options = create_window_options(inner_width, inner_height, pos_x, pos_y)?;
 
-    // Store settings values we need for the app
+    // Store settings values we need for the app (move Copy types directly)
     let settings_browsers = settings.browsers.clone();
-    let cache_exp_days = Box::leak(Box::new(settings.cache_expire_days));
-    let settings_cols = Box::leak(Box::new(settings.cols));
+    let cache_exp_days = settings.cache_expire_days;
+    let settings_cols = settings.cols;
 
     // Run the application
     eframe::run_native(
@@ -54,7 +54,7 @@ fn main() -> Result<(), Error> {
             setup_fonts(cc);
 
             // Setup browser icons
-            let browsers = setup_browser_icons(cc, settings_browsers, *cache_exp_days);
+            let browsers = setup_browser_icons(cc, settings_browsers, cache_exp_days);
 
             // Set dark theme
             cc.egui_ctx.set_theme(egui::Theme::Dark);
@@ -63,7 +63,7 @@ fn main() -> Result<(), Error> {
             Ok(Box::new(mainwindow::MainWindow::new(
                 url,
                 browsers,
-                *settings_cols,
+                settings_cols,
             )))
         }),
     )
@@ -79,12 +79,7 @@ fn main() -> Result<(), Error> {
 
 /// Parse command line arguments and return the URL
 fn parse_command_line() -> String {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        String::new()
-    } else {
-        args[1].clone()
-    }
+    std::env::args().nth(1).unwrap_or_default()
 }
 
 /// Setup the logger with rolling file appender
@@ -98,7 +93,7 @@ fn setup_logger() -> Result<(), Error> {
                 Box::new(log4rs::append::rolling_file::policy::compound::roll::delete::DeleteRoller::new())
             ))
         )
-        .map_err(|e| Error::new(e.kind(), format!("Failed to create log file appender: {}", e)))?;
+        .map_err(|e| Error::new(ErrorKind::Other, format!("Failed to create log file appender: {}", e)))?;
 
     let config = log4rs::config::Config::builder()
         .appender(log4rs::config::Appender::builder().build("main", Box::new(file_roller)))
