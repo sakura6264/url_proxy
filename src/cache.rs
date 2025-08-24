@@ -1,7 +1,6 @@
 use image::RgbaImage;
-use sled;
 use std::io::Cursor;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::result::Result;
 
 // Time constants
@@ -93,10 +92,7 @@ impl IconCacheManager {
             }
             Err(e) => {
                 log::error!("Database error: {e}");
-                Err(Error::new(
-                    ErrorKind::Other,
-                    format!("Database error: {}", e),
-                ))
+                Err(Error::other(format!("Database error: {}", e)))
             }
         }
     }

@@ -7,8 +7,7 @@ pub mod utils;
 
 use eframe::egui;
 use log::{self, error, info, warn, LevelFilter};
-use log4rs;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::result::Result;
 
 // Default placeholder icon used when browser icons can't be loaded
@@ -67,12 +66,7 @@ fn main() -> Result<(), Error> {
             )))
         }),
     )
-    .map_err(|e| {
-        Error::new(
-            ErrorKind::Other,
-            format!("Failed to run application: {}", e),
-        )
-    })?;
+    .map_err(|e| Error::other(format!("Failed to run application: {}", e)))?;
 
     Ok(())
 }
@@ -93,7 +87,7 @@ fn setup_logger() -> Result<(), Error> {
                 Box::new(log4rs::append::rolling_file::policy::compound::roll::delete::DeleteRoller::new())
             ))
         )
-        .map_err(|e| Error::new(ErrorKind::Other, format!("Failed to create log file appender: {}", e)))?;
+        .map_err(|e| Error::other(format!("Failed to create log file appender: {}", e)))?;
 
     let config = log4rs::config::Config::builder()
         .appender(log4rs::config::Appender::builder().build("main", Box::new(file_roller)))
@@ -102,19 +96,10 @@ fn setup_logger() -> Result<(), Error> {
                 .appender("main")
                 .build(LevelFilter::Info),
         )
-        .map_err(|e| {
-            Error::new(
-                ErrorKind::Other,
-                format!("Failed to build logger config: {}", e),
-            )
-        })?;
+        .map_err(|e| Error::other(format!("Failed to build logger config: {}", e)))?;
 
-    log4rs::init_config(config).map_err(|e| {
-        Error::new(
-            ErrorKind::Other,
-            format!("Failed to initialize logger: {}", e),
-        )
-    })?;
+    log4rs::init_config(config)
+        .map_err(|e| Error::other(format!("Failed to initialize logger: {}", e)))?;
 
     Ok(())
 }
@@ -165,13 +150,8 @@ fn create_window_options(
     pos_y: f32,
 ) -> Result<eframe::NativeOptions, Error> {
     // Load application icon
-    let icon_img =
-        image::load_from_memory(include_bytes!("../assets/icon_main.png")).map_err(|e| {
-            Error::new(
-                ErrorKind::Other,
-                format!("Failed to load application icon: {}", e),
-            )
-        })?;
+    let icon_img = image::load_from_memory(include_bytes!("../assets/icon_main.png"))
+        .map_err(|e| Error::other(format!("Failed to load application icon: {}", e)))?;
     let icon_buffer = icon_img.to_rgba8();
     let icon_pixels = icon_buffer.as_flat_samples();
 
@@ -205,11 +185,12 @@ fn setup_fonts(cc: &eframe::CreationContext) {
     // Add custom fonts
     fonts.font_data.insert(
         "fonts".to_string(),
-        egui::FontData::from_static(include_bytes!("../assets/Roboto-Regular.ttf")),
+        egui::FontData::from_static(include_bytes!("../assets/Roboto-Regular.ttf")).into(),
     );
     fonts.font_data.insert(
         "symbols".to_string(),
-        egui::FontData::from_static(include_bytes!("../assets/SymbolsNerdFontMono-Regular.ttf")),
+        egui::FontData::from_static(include_bytes!("../assets/SymbolsNerdFontMono-Regular.ttf"))
+            .into(),
     );
 
     // Configure font families
